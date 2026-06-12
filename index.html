@@ -650,9 +650,6 @@ function setProgress(p){
 }
 
 
-function setImageLoaded(on){
-  document.getElementById("bproc").disabled=!on;
-}
 function setUploadEnabled(on){
   document.querySelectorAll(".btn-upload").forEach(b=>{b.disabled=!on;});
 }
@@ -661,7 +658,7 @@ function loadFile(f){
   r.onload=e=>{
     originalSrcData=e.target.result;
     const img=new Image();
-    img.onload=()=>{srcImg=img;resetPlacement();setPlacementMode(false);setImageLoaded(true);processImage();};
+    img.onload=()=>{srcImg=img;resetPlacement();setPlacementMode(false);processImage();};
     img.src=originalSrcData;
   };
   r.readAsDataURL(f);
