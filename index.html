@@ -329,7 +329,6 @@ let frameImg=null,frameReady=false;
 
 function loadTextures(){
   stoneImg=new Image();
-  stoneImg.crossOrigin="anonymous";
   stoneImg.onload=function(){
     stoneReady=true;
     const tc=document.createElement("canvas");
@@ -349,7 +348,6 @@ function loadTextures(){
 
 
   frameImg=new Image();
-  frameImg.crossOrigin="anonymous";
   frameImg.onload=function(){
     frameReady=true;
     redrawOverlays();
