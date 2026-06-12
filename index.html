@@ -190,7 +190,6 @@
   <div>
     <div class="slabel">Display</div>
     <div class="trow"><span>Item frame overlay</span><label class="sw"><input type="checkbox" id="tframe" checked><span class="sw-t"></span></label></div>
-    <div id="texstat" class="tex-status">Textures: loading...</div>
   </div>
   <div></div>
 </div>
@@ -329,9 +328,6 @@ let stoneImg=null,stoneReady=false,stoneTileURL=null,stoneOffsetX=0,stoneOffsetY
 let frameImg=null,frameReady=false;
 
 function loadTextures(){
-  const stat=document.getElementById("texstat");
-  let stoneOk=false,frameOk=false;
-
   stoneImg=new Image();
   stoneImg.crossOrigin="anonymous";
   stoneImg.onload=function(){
@@ -342,14 +338,11 @@ function loadTextures(){
     tctx.imageSmoothingEnabled=false;
     tctx.drawImage(stoneImg,0,0,128,128);
     stoneTileURL=tc.toDataURL();
-    stoneOk=true;
-    updateTexStatus();
     requestAnimationFrame(applyStone);
   };
   stoneImg.onerror=function(){
-    stoneReady=true;stoneOk=true;
+    stoneReady=true;
     stoneTileURL=genFallbackStone();
-    updateTexStatus();
     requestAnimationFrame(applyStone);
   };
   stoneImg.src="https://i.ibb.co/LdTkNHJF/18460337-smooth-stone-icon-xl.webp";
@@ -357,26 +350,14 @@ function loadTextures(){
   frameImg=new Image();
   frameImg.crossOrigin="anonymous";
   frameImg.onload=function(){
-    frameReady=true;frameOk=true;
-    updateTexStatus();
+    frameReady=true;
     redrawOverlays();
   };
   frameImg.onerror=function(){
-    frameReady=false;frameOk=true;
-    updateTexStatus();
+    frameReady=false;
     redrawOverlays();
   };
   frameImg.src="https://i.ibb.co/S4zcnx3s/4238653116.webp";
-
-  function updateTexStatus(){
-    if(stoneOk&&frameOk){
-      const parts=[];
-      parts.push(stoneReady?"stone ✓":"stone ✗");
-      parts.push(frameReady?"frame ✓":"frame (fallback)");
-      stat.textContent="Textures: "+parts.join(" · ");
-      stat.className="tex-status loaded";
-    }
-  }
 }
 
 function genFallbackStone(){
