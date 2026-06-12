@@ -1,2 +1,0 @@
-# imageframeguide
-image frame
