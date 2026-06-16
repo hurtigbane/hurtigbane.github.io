@@ -41,7 +41,7 @@
     .sw-t::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;background:var(--dimtext);border-radius:50%;transition:.2s}
     .sw input:checked+.sw-t{background:var(--accent2)}
     .sw input:checked+.sw-t::after{left:16px;background:var(--accent)}
-    .rng{display:flex;flex-direction:column;gap:6px;margin-bottom:7px}
+    .rng{display:flex;flex-direction:column;gap:2px}
     .rng label{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--dimtext);display:flex;justify-content:space-between}
     .rng label span{color:var(--accent)}
     input[type=range]{-webkit-appearance:none;height:3px;background:var(--dim);outline:none;width:100%;border-radius:2px}
@@ -187,6 +187,7 @@
     <div>
       <div class="slabel">Display</div>
       <div class="trow"><span>Item frame overlay</span><label class="sw"><input type="checkbox" id="tframe" checked><span class="sw-t"></span></label></div>
+      <div class="trow"><span>Enable snapping</span><label class="sw"><input type="checkbox" id="tsnap" checked><span class="sw-t"></span></label></div>
     </div>
     <details class="adv-sec">
       <summary>Advanced</summary>
@@ -216,6 +217,11 @@
           <div class="rng"><label>Saturation <span id="satval">100</span></label><input type="range" id="sat" min="0" max="300" value="100"></div>
           <div class="rng"><label>Hue Shift <span id="hueval">0</span></label><input type="range" id="hue" min="-180" max="180" value="0"></div>
           <div class="rng"><label>Gamma <span id="gamval">1.00</span></label><input type="range" id="gamma" min="20" max="300" value="100"></div>
+        </div>
+        <div class="btn-group">
+          <button onclick="exportSettings()">Export Settings</button>
+          <button onclick="document.getElementById('sinput').click()">Import Settings</button>
+          <input type="file" id="sinput" accept=".json" style="display:none">
         </div>
       </div>
     </details>
@@ -356,6 +362,7 @@
   let adjBright=0,adjContrast=0,adjSat=100,adjHue=0,adjGamma=100;
   let stoneImg=null,stoneReady=false,stoneTileURL=null,stoneOffsetX=0,stoneOffsetY=0;
   let frameImg=null,frameReady=false;
+  let snapEnabled = true;
 
   function loadTextures(){
     stoneImg=new Image();
@@ -388,7 +395,6 @@
     };
     frameImg.src="assets/frame.webp";
   }
-
   loadTextures();
   buildPresets();
   syncStoneOffsetByFrameX();
@@ -410,6 +416,7 @@
   document.getElementById("tq").addEventListener("change",e=>{useQ=e.target.checked;document.getElementById("qsec").classList.toggle("vis",useQ);if(srcImg)processImage();});
   document.getElementById("tpal").addEventListener("change",e=>{usePal=e.target.checked;document.getElementById("psec").classList.toggle("vis",usePal);if(srcImg)processImage();});
   document.getElementById("tframe").addEventListener("change",()=>redrawOverlays());
+  document.getElementById("tsnap").addEventListener("change", e => { snapEnabled = e.target.checked; });
 
   document.getElementById("wr").addEventListener("input",e=>{wR=(+e.target.value)/10;document.getElementById("wrval").textContent=wR.toFixed(1);ccache.clear();if(srcImg)processImage();});
   document.getElementById("wg").addEventListener("input",e=>{wG=(+e.target.value)/10;document.getElementById("wgval").textContent=wG.toFixed(1);ccache.clear();if(srcImg)processImage();});
@@ -521,12 +528,30 @@
         const sx=rect.left+placeDrag.centerX*zoom,sy=rect.top+placeDrag.centerY*zoom;
         const ang=Math.atan2(e.clientY-sy,e.clientX-sx)*180/Math.PI;
         imgRotation=placeDrag.startAngle+(ang-placeDrag.startMouseAngle);
+
+        if (snapEnabled) {
+          const snapAngle = 15;
+          imgRotation = Math.round(imgRotation / snapAngle) * snapAngle;
+        }
+
         drawPlacementPreview();
         return;
       }
-      const dx=(e.clientX-placeDrag.mx)/zoom;
-      const dy=(e.clientY-placeDrag.my)/zoom;
-      imgPlacement=applyPlaceResize(placeDrag.type,placeDrag.start,dx,dy);
+
+      let dx = (e.clientX - placeDrag.mx) / zoom;
+      let dy = (e.clientY - placeDrag.my) / zoom;
+
+      if (imgRotation && placeDrag.type !== "move") {
+        const rad = -imgRotation * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const rdx = dx * cos - dy * sin;
+        const rdy = dx * sin + dy * cos;
+        dx = rdx;
+        dy = rdy;
+      }
+
+      imgPlacement = applyPlaceResize(placeDrag.type, placeDrag.start, dx, dy);
       updatePlaceEditor();
       drawPlacementPreview();
     });
@@ -751,13 +776,14 @@
   function resetEverything(){
     document.getElementById("fx").value=3;
     document.getElementById("fy").value=2;
-    document.getElementById("damt").value=25;
-    document.getElementById("dval").textContent="0.25";
+    document.getElementById("damt").value=75;
+    document.getElementById("dval").textContent="0.75";
     document.getElementById("qcolors").value=32;
     document.getElementById("qcval").textContent="32";
     document.getElementById("tq").checked=false;
     document.getElementById("tpal").checked=false;
     document.getElementById("tframe").checked=true;
+    document.getElementById("tsnap").checked=true; snapEnabled=true;
     document.getElementById("wr").value=20;document.getElementById("wrval").textContent="2.0";wR=2;
     document.getElementById("wg").value=40;document.getElementById("wgval").textContent="4.0";wG=4;
     document.getElementById("wb").value=30;document.getElementById("wbval").textContent="3.0";wB=3;
@@ -781,20 +807,85 @@
     syncStoneOffsetByFrameX();
     restoreOriginalSrc(()=>{if(srcImg)processImage();});
   }
-  function applyPlaceResize(type,s,dx,dy){
-    const min=16;let{x,y,w,h}=s;
-    switch(type){
-      case"move":x=s.x+dx;y=s.y+dy;break;
-      case"e":w=Math.max(min,s.w+dx);break;
-      case"w":w=Math.max(min,s.w-dx);x=s.x+s.w-w;break;
-      case"s":h=Math.max(min,s.h+dy);break;
-      case"n":h=Math.max(min,s.h-dy);y=s.y+s.h-h;break;
-      case"se":w=Math.max(min,s.w+dx);h=Math.max(min,s.h+dy);break;
-      case"sw":w=Math.max(min,s.w-dx);x=s.x+s.w-w;h=Math.max(min,s.h+dy);break;
-      case"ne":w=Math.max(min,s.w+dx);h=Math.max(min,s.h-dy);y=s.y+s.h-h;break;
-      case"nw":w=Math.max(min,s.w-dx);x=s.x+s.w-w;h=Math.max(min,s.h-dy);y=s.y+s.h-h;break;
+  function applyPlaceResize(type, s, dx, dy) {
+    const min = 16;
+    if (type === "move") {
+      let x = s.x + dx;
+      let y = s.y + dy;
+      if (snapEnabled) {
+        const snapGrid = 16;
+        const snapThreshold = Math.max(2, 6 / zoom);
+        const tw = (+document.getElementById("fx").value || 1) * 128;
+        const th = (+document.getElementById("fy").value || 1) * 128;
+
+        x = snapVal(x, snapGrid, snapThreshold);
+        y = snapVal(y, snapGrid, snapThreshold);
+
+        for (const t of [0, tw / 2 - s.w / 2, tw - s.w]) {
+          if (Math.abs(x - t) < snapThreshold) { x = t; break; }
+        }
+        for (const t of [0, th / 2 - s.h / 2, th - s.h]) {
+          if (Math.abs(y - t) < snapThreshold) { y = t; break; }
+        }
+      }
+      return { x, y, w: s.w, h: s.h };
     }
-    return{x,y,w,h};
+    let left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
+    if (type.includes("e")) right = s.x + s.w + dx;
+    if (type.includes("w")) left = s.x + dx;
+    if (type.includes("s")) bottom = s.y + s.h + dy;
+    if (type.includes("n")) top = s.y + dy;
+    if (snapEnabled) {
+      const snapGrid = 16;
+      const snapThreshold = Math.max(2, 6 / zoom);
+      const tw = (+document.getElementById("fx").value || 1) * 128;
+      const th = (+document.getElementById("fy").value || 1) * 128;
+
+      if (type.includes("e")) {
+        right = snapVal(right, snapGrid, snapThreshold);
+        if (Math.abs(right - tw) < snapThreshold) right = tw;
+      }
+      if (type.includes("w")) {
+        left = snapVal(left, snapGrid, snapThreshold);
+        if (Math.abs(left - 0) < snapThreshold) left = 0;
+      }
+      if (type.includes("s")) {
+        bottom = snapVal(bottom, snapGrid, snapThreshold);
+        if (Math.abs(bottom - th) < snapThreshold) bottom = th;
+      }
+      if (type.includes("n")) {
+        top = snapVal(top, snapGrid, snapThreshold);
+        if (Math.abs(top - 0) < snapThreshold) top = 0;
+      }
+    }
+    let new_w = right - left;
+    let new_h = bottom - top;
+    if (new_w < min) {
+      if (type.includes("w")) left = right - min;
+      new_w = min;
+    }
+    if (new_h < min) {
+      if (type.includes("n")) top = bottom - min;
+      new_h = min;
+    }
+    const rad = (imgRotation || 0) * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    let ox = 0, oy = 0;
+    let nx = 0, ny = 0;
+    if (type === "e") { ox = -s.w/2; nx = -new_w/2; }
+    else if (type === "w") { ox = s.w/2; nx = new_w/2; }
+    else if (type === "s") { ox = 0; oy = -s.h/2; nx = 0; ny = -new_h/2; }
+    else if (type === "n") { ox = 0; oy = s.h/2; nx = 0; ny = new_h/2; }
+    else if (type === "se") { ox = -s.w/2; oy = -s.h/2; nx = -new_w/2; ny = -new_h/2; }
+    else if (type === "sw") { ox = s.w/2; oy = -s.h/2; nx = new_w/2; ny = -new_h/2; }
+    else if (type === "ne") { ox = -s.w/2; oy = s.h/2; nx = -new_w/2; ny = new_h/2; }
+    else if (type === "nw") { ox = s.w/2; oy = s.h/2; nx = new_w/2; ny = new_h/2; }
+    const dvx = (ox * cos - oy * sin) - (nx * cos - ny * sin);
+    const dvy = (ox * sin + oy * cos) - (nx * sin + ny * cos);
+    let final_x = s.x + s.w / 2 + dvx - new_w / 2;
+    let final_y = s.y + s.h / 2 + dvy - new_h / 2;
+    return { x: final_x, y: final_y, w: new_w, h: new_h };
   }
   function setPlacementMode(on){
     placementMode=on;
@@ -841,7 +932,14 @@
     redrawOverlays();
     if(placementMode)updatePlaceEditor();
   }
-
+  function snapVal(val, grid, threshold) {
+    if (grid <= 1) return val;
+    let rem = val % grid;
+    if (rem < 0) rem += grid;
+    if (rem < threshold) return val - rem;
+    if (rem > grid - threshold) return val + (grid - rem);
+    return val;
+  }
   function resizeImg(src,nx,ny){
     const tw=nx*128,th=ny*128;
     const c=document.createElement("canvas");c.width=tw;c.height=th;
@@ -1228,6 +1326,69 @@
     if(e.key==="Enter")startUpload();
     if(e.key==="Escape")closeUploadModal();
   });
+  document.getElementById("sinput").addEventListener("change",e=>{if(e.target.files[0])importSettingsFile(e.target.files[0]);e.target.value="";});
+
+  function exportSettings(){
+    const settings={
+      tq:document.getElementById("tq").checked,
+      tpal:document.getElementById("tpal").checked,
+      tframe:document.getElementById("tframe").checked,
+      damt:document.getElementById("damt").value,
+      qcolors:document.getElementById("qcolors").value,
+      wr:document.getElementById("wr").value,
+      wg:document.getElementById("wg").value,
+      wb:document.getElementById("wb").value,
+      bright:document.getElementById("bright").value,
+      contrast:document.getElementById("contrast").value,
+      sat:document.getElementById("sat").value,
+      hue:document.getElementById("hue").value,
+      gamma:document.getElementById("gamma").value,
+      fx:document.getElementById("fx").value,
+      fy:document.getElementById("fy").value
+    };
+    const data=URL.createObjectURL(new Blob([JSON.stringify(settings,null,2)],{type:"application/json"}));
+    const a=document.createElement("a");
+    a.href=data;a.download="settings.json";a.click();
+    URL.revokeObjectURL(data);
+  }
+
+  function importSettingsFile(file){
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const settings=JSON.parse(e.target.result);
+        importSettings(settings);
+      }catch(err){
+        alert("Invalid settings file: "+err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function importSettings(settings){
+    if(settings.tq!==undefined)document.getElementById("tq").checked=settings.tq;
+    if(settings.tpal!==undefined)document.getElementById("tpal").checked=settings.tpal;
+    if(settings.tframe!==undefined)document.getElementById("tframe").checked=settings.tframe;
+    if(settings.damt!==undefined){document.getElementById("damt").value=settings.damt;document.getElementById("dval").textContent=(parseInt(settings.damt)/100).toFixed(2);}
+    if(settings.qcolors!==undefined){document.getElementById("qcolors").value=settings.qcolors;document.getElementById("qcval").textContent=settings.qcolors;}
+    if(settings.wr!==undefined){document.getElementById("wr").value=settings.wr;wR=(+settings.wr)/10;document.getElementById("wrval").textContent=wR.toFixed(1);}
+    if(settings.wg!==undefined){document.getElementById("wg").value=settings.wg;wG=(+settings.wg)/10;document.getElementById("wgval").textContent=wG.toFixed(1);}
+    if(settings.wb!==undefined){document.getElementById("wb").value=settings.wb;wB=(+settings.wb)/10;document.getElementById("wbval").textContent=wB.toFixed(1);}
+    if(settings.bright!==undefined){document.getElementById("bright").value=settings.bright;document.getElementById("brval").textContent=settings.bright;}
+    if(settings.contrast!==undefined){document.getElementById("contrast").value=settings.contrast;document.getElementById("ctval").textContent=settings.contrast;}
+    if(settings.sat!==undefined){document.getElementById("sat").value=settings.sat;document.getElementById("satval").textContent=settings.sat;}
+    if(settings.hue!==undefined){document.getElementById("hue").value=settings.hue;document.getElementById("hueval").textContent=settings.hue;}
+    if(settings.gamma!==undefined){document.getElementById("gamma").value=settings.gamma;document.getElementById("gamval").textContent=(+settings.gamma/100).toFixed(2);}
+    if(settings.fx!==undefined){document.getElementById("fx").value=settings.fx;resetPlacement();syncStoneOffsetByFrameX();}
+    if(settings.fy!==undefined){document.getElementById("fy").value=settings.fy;resetPlacement();}
+    if(srcImg)processImage();
+    redrawOverlays();
+    useQ=document.getElementById("tq").checked;
+    usePal=document.getElementById("tpal").checked;
+    document.getElementById("qsec").classList.toggle("vis",useQ);
+    document.getElementById("psec").classList.toggle("vis",usePal);
+    ccache.clear();
+  }
 </script>
 </body>
 </html>
