@@ -170,6 +170,16 @@
         <button id="b-jjn" onclick="setMode('jjn')"><span class="dot"></span>JJN</button>
       </div>
     </div>
+    <div>
+      <div class="slabel">Color Space</div>
+      <div class="btn-group">
+        <button id="cs-rgb" class="on" onclick="setColorSpace('rgb')"><span class="dot"></span>RGB (default)</button>
+        <button id="cs-oklab" onclick="setColorSpace('oklab')"><span class="dot"></span>OKLab</button>
+        <button id="cs-lab" onclick="setColorSpace('lab')"><span class="dot"></span>CIELAB</button>
+        <button id="cs-xyz" onclick="setColorSpace('xyz')"><span class="dot"></span>XYZ</button>
+        <button id="cs-ycbcr" onclick="setColorSpace('ycbcr')"><span class="dot"></span>YCbCr</button>
+      </div>
+    </div>
     <div class="rng"><label>Dither Amount <span id="dval">0.25</span></label><input type="range" id="damt" min="0" max="100" value="25" step="5"></div>
     <div>
       <div class="slabel">Custom Palette</div>
@@ -205,7 +215,7 @@
           </div>
         </div>
         <div>
-          <div class="slabel">Color Matching Weights</div>
+          <div class="slabel">Color Matching Weights (RGB Only)</div>
           <div class="rng"><label>Red Weight <span id="wrval">2.0</span></label><input type="range" id="wr" min="0" max="100" value="20" step="1"></div>
           <div class="rng"><label>Green Weight <span id="wgval">4.0</span></label><input type="range" id="wg" min="0" max="100" value="40" step="1"></div>
           <div class="rng"><label>Blue Weight <span id="wbval">3.0</span></label><input type="range" id="wb" min="0" max="100" value="30" step="1"></div>
@@ -306,6 +316,55 @@
 </div>
 
 <script>
+  // --- Color Space Conversions ---
+  function srgbToLinear(c) {
+    c /= 255.0;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+  function rgbToXyz(r, g, b) {
+    let R = srgbToLinear(r), G = srgbToLinear(g), B = srgbToLinear(b);
+    let X = (0.4124564 * R + 0.3575761 * G + 0.1804375 * B) * 100;
+    let Y = (0.2126729 * R + 0.7151522 * G + 0.0721750 * B) * 100;
+    let Z = (0.0193339 * R + 0.1191920 * G + 0.9503041 * B) * 100;
+    return [X, Y, Z];
+  }
+  function rgbToLab(r, g, b) {
+    let [X, Y, Z] = rgbToXyz(r, g, b);
+    let Xn = 95.0489, Yn = 100.0, Zn = 108.8840;
+    let xr = X / Xn, yr = Y / Yn, zr = Z / Zn;
+    let fx = (xr > 0.008856) ? Math.cbrt(xr) : (7.787 * xr + 16/116);
+    let fy = (yr > 0.008856) ? Math.cbrt(yr) : (7.787 * yr + 16/116);
+    let fz = (zr > 0.008856) ? Math.cbrt(zr) : (7.787 * zr + 16/116);
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  }
+  function rgbToOkLab(r, g, b) {
+    let lr = srgbToLinear(r), lg = srgbToLinear(g), lb = srgbToLinear(b);
+    let l = 0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb;
+    let m = 0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb;
+    let s = 0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb;
+    let l_ = Math.cbrt(l);
+    let m_ = Math.cbrt(m);
+    let s_ = Math.cbrt(s);
+    return [
+      0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+      1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+      0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    ];
+  }
+  function rgbToYCbCr(r, g, b) {
+    let Y = 16 + (0.257 * r) + (0.504 * g) + (0.098 * b);
+    let Cb = 128 + (-0.148 * r) - (0.291 * g) + (0.439 * b);
+    let Cr = 128 + (0.439 * r) - (0.368 * g) - (0.071 * b);
+    return [Y, Cb, Cr];
+  }
+  function convertColor(r, g, b, space) {
+    if (space === 'oklab') return rgbToOkLab(r, g, b);
+    if (space === 'lab') return rgbToLab(r, g, b);
+    if (space === 'xyz') return rgbToXyz(r, g, b);
+    if (space === 'ycbcr') return rgbToYCbCr(r, g, b);
+    return [r, g, b]; // rgb
+  }
+
   const BASE=[
     null,[127,178,56],[247,233,163],[199,199,199],[255,0,0],[160,160,255],[167,167,167],
     [0,124,0],[255,255,255],[164,168,184],[151,109,77],[112,112,112],[64,64,255],
@@ -323,23 +382,43 @@
   const PAL=new Array(256).fill(null);
   for(let b=0;b<BASE.length;b++){if(!BASE[b])continue;for(let v=0;v<4;v++){const m=MULT[v],id=b*4+v,[r,g,bl]=BASE[b];PAL[id]=[Math.floor(r*m/255),Math.floor(g*m/255),Math.floor(bl*m/255)];}}
   const VALID=PAL.filter(Boolean);
+  
+  let currentColorSpace = 'rgb';
+  let VALID_CS = VALID.map(c => convertColor(c[0], c[1], c[2], currentColorSpace));
 
   const ccache=new Map();
   function nearestMC(r,g,b){
     const k=(r<<16)|(g<<8)|b;
     if(ccache.has(k))return ccache.get(k);
+    
+    const [c1, c2, c3] = convertColor(r, g, b, currentColorSpace);
     let best=0,bd=1e9;
-    for(let i=0;i<VALID.length;i++){
-      const[pr,pg,pb]=VALID[i];
-      const d=(r-pr)**2*wR+(g-pg)**2*wG+(b-pb)**2*wB;
+    for(let i=0;i<VALID_CS.length;i++){
+      const [p1, p2, p3] = VALID_CS[i];
+      let d;
+      if (currentColorSpace === 'rgb') {
+        d = (c1-p1)**2 * wR + (c2-p2)**2 * wG + (c3-p3)**2 * wB;
+      } else {
+        d = (c1-p1)**2 + (c2-p2)**2 + (c3-p3)**2;
+      }
       if(d<bd){bd=d;best=i;}
     }
     ccache.set(k,VALID[best]);
     return VALID[best];
   }
-  function nearestCustom(pal,r,g,b){
+  function nearestCustom(pal, palCS, r, g, b){
+    const [c1, c2, c3] = convertColor(r, g, b, currentColorSpace);
     let best=pal[0],bd=1e9;
-    for(const p of pal){const d=(r-p[0])**2*wR+(g-p[1])**2*wG+(b-p[2])**2*wB;if(d<bd){bd=d;best=p;}}
+    for(let i=0; i<pal.length; i++){
+      const [p1, p2, p3] = palCS[i];
+      let d;
+      if (currentColorSpace === 'rgb') {
+        d = (c1-p1)**2 * wR + (c2-p2)**2 * wG + (c3-p3)**2 * wB;
+      } else {
+        d = (c1-p1)**2 + (c2-p2)**2 + (c3-p3)**2;
+      }
+      if(d<bd){bd=d;best=pal[i];}
+    }
     return best;
   }
 
@@ -621,6 +700,15 @@
     });
     if(srcImg)processImage();
   }
+  function setColorSpace(cs){
+    currentColorSpace=cs;
+    ["rgb","oklab","lab","xyz","ycbcr"].forEach(id=>{
+      document.getElementById("cs-"+id).classList.toggle("on",id===cs);
+    });
+    VALID_CS = VALID.map(c => convertColor(c[0], c[1], c[2], currentColorSpace));
+    ccache.clear();
+    if(srcImg)processImage();
+  }
   function setQ(m){
     qMethod=m;
     ["mc","km","pop"].forEach(id=>document.getElementById("qb-"+id).classList.toggle("on",id===m));
@@ -799,6 +887,7 @@
     useQ=false;usePal=false;activePal=null;loadedPal=null;
     mode="nearest";qMethod="mc";qCols=32;
     setMode("nearest");setQ("mc");hlPreset(null);
+    setColorSpace("rgb");
     resetPlacement();
     resetViewPan();
     zoom=1;
@@ -1091,7 +1180,8 @@
   }
 
   function applyNearest(id,pal){
-    const d=id.data,fn=pal?(r,g,b)=>nearestCustom(pal,r,g,b):nearestMC;
+    const palCS = pal ? pal.map(c => convertColor(c[0], c[1], c[2], currentColorSpace)) : null;
+    const d=id.data,fn=pal?(r,g,b)=>nearestCustom(pal, palCS, r,g,b):nearestMC;
     for(let i=0;i<d.length;i+=4){const[r,g,b]=fn(d[i],d[i+1],d[i+2]);d[i]=r;d[i+1]=g;d[i+2]=b;}
     return id;
   }
@@ -1111,7 +1201,7 @@
       buf[idx]=nr;buf[idx+1]=ng;buf[idx+2]=nb;
       const er=(or-nr)*amt,eg=(og-ng)*amt,eb=(ob-nb)*amt;
       for(const[dx,dy,f]of spread){
-        const nx=x+dx,ny=y+dy;if(nx<0||nx>=w||ny>=h)continue;
+        const nx=x+dx,ny=y+dy;if(nx<0||nx>=w||ny<0||ny>=h)continue;
         const ni=(ny*w+nx)*3;buf[ni]+=er*f;buf[ni+1]+=eg*f;buf[ni+2]+=eb*f;
       }
     }
@@ -1132,7 +1222,8 @@
   function makeDitherFn(m){
     const amt=parseInt(document.getElementById("damt").value)/100;
     const pal=usePal?getCustomPal():null;
-    const fn=pal?(r,g,b)=>nearestCustom(pal,r,g,b):nearestMC;
+    const palCS = pal ? pal.map(c => convertColor(c[0], c[1], c[2], currentColorSpace)) : null;
+    const fn=pal?(r,g,b)=>nearestCustom(pal, palCS, r,g,b):nearestMC;
     return function(id){
       if(m==="nearest")return applyNearest(id,pal);
       if(m==="ordered")return applyOrdered(id,fn,amt);
@@ -1330,6 +1421,7 @@
 
   function exportSettings(){
     const settings={
+      cs: currentColorSpace,
       tq:document.getElementById("tq").checked,
       tpal:document.getElementById("tpal").checked,
       tframe:document.getElementById("tframe").checked,
@@ -1366,6 +1458,7 @@
   }
 
   function importSettings(settings){
+    if(settings.cs!==undefined){setColorSpace(settings.cs);}
     if(settings.tq!==undefined)document.getElementById("tq").checked=settings.tq;
     if(settings.tpal!==undefined)document.getElementById("tpal").checked=settings.tpal;
     if(settings.tframe!==undefined)document.getElementById("tframe").checked=settings.tframe;
